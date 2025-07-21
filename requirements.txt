@@ -4,3 +4,4 @@ openai
 edge-tts
 python-dotenv
 nest-asyncio
+requests

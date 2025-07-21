@@ -1,57 +1,58 @@
-import os
-import uuid
-import asyncio
-from flask import Flask, request, jsonify, send_file
-from dotenv import load_dotenv
-from openai import OpenAI
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import openai, asyncio, tempfile, base64
 import edge_tts
+import os
 
-# 加载 .env 文件中的环境变量
-load_dotenv()
-client = OpenAI()  # 自动从 .env 中读取 OPENAI_API_KEY
+openai.api_key = os.environ.get("OPENAI_API_KEY") 
 
 app = Flask(__name__)
+CORS(app)
+
+async def text_to_speech(text):
+    communicate = edge_tts.Communicate(text, "zh-CN-XiaoxiaoNeural")
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as f:
+        await communicate.save(f.name)
+        with open(f.name, "rb") as audio_file:
+            return base64.b64encode(audio_file.read()).decode("utf-8")
 
 @app.route("/chat", methods=["POST"])
 def chat():
-    print("📥 收到 POST 请求")
+    print("📥 收到上传请求")
+
+    # ✅ 检查是否上传了音频文件
     if 'audio' not in request.files:
-        print("❌ 没有 audio 文件")
         return jsonify({"error": "No audio uploaded"}), 400
 
     audio_file = request.files['audio']
 
-    if not user_input:
-        return jsonify({"error": "Missing 'message'"}), 400
+    # ✅ 保存临时音频文件
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
+        audio_file.save(f.name)
+        audio_path = f.name
 
     try:
-        # GPT 回复
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",  # 使用你当前有权限的模型
+        # ✅ Whisper 识别文字
+        transcript = openai.Audio.transcribe("whisper-1", open(audio_path, "rb"))
+        question = transcript["text"]
+        print("🧠 识别内容：", question)
+
+        # ✅ ChatGPT 回答
+        chat_response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": "You are an English-speaking assistant."},
-                {"role": "user", "content": user_input}
+                {"role": "system", "content": "你是一个语音助手"},
+                {"role": "user", "content": question}
             ]
         )
-        reply_text = response.choices[0].message.content
-        print("🤖 GPT reply:", reply_text)
+        answer = chat_response["choices"][0]["message"]["content"]
+        print("🤖 GPT 回复：", answer)
 
-        # 使用英文语音生成 MP3
-        output_file = f"reply_{uuid.uuid4().hex}.mp3"
-        print("🔊 Generating speech...")
-        asyncio.run(text_to_speech(reply_text, output_file))
-        print("✅ MP3 saved:", output_file)
+        # ✅ 生成语音
+        audio_base64 = asyncio.run(text_to_speech(answer))
 
-        return send_file(output_file, mimetype="audio/mpeg")
+        return jsonify({"text": answer, "audio_base64": audio_base64})
 
     except Exception as e:
-        print("❌ Error occurred:", str(e))
+        print("❌ 错误：", str(e))
         return jsonify({"error": str(e)}), 500
-
-# TTS 函数：使用英文女声
-async def text_to_speech(text, output_path):
-    communicate = edge_tts.Communicate(text, voice="en-US-AriaNeural")
-    await communicate.save(output_path)
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)

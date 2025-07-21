@@ -21,7 +21,7 @@ CORS(app)
 
 # 文本转语音，返回 base64 音频字符串
 async def text_to_speech(text):
-    communicate = edge_tts.Communicate(text, "zh-CN-XiaoxiaoNeural")
+    communicate = edge_tts.Communicate(text, "en-GB-LibbyNeural")
     with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
         await communicate.save(f.name)
         with open(f.name, "rb") as audio_file:

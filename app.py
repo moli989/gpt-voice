@@ -34,7 +34,7 @@ def chat():
 
         # 保存上传音频
         audio_file = request.files['audio']
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_audio:
+        with tempfile.NamedTemporaryFile(suffix=".aac", delete=False) as tmp_audio:
             audio_file.save(tmp_audio.name)
 
         # ✅ 语音识别（新版 OpenAI v1.x）

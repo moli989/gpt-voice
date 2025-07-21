@@ -14,9 +14,12 @@ app = Flask(__name__)
 
 @app.route("/chat", methods=["POST"])
 def chat():
-    data = request.get_json()
-    user_input = data.get("message", "")
-    print("👉 User input:", user_input)
+    print("📥 收到 POST 请求")
+    if 'audio' not in request.files:
+        print("❌ 没有 audio 文件")
+        return jsonify({"error": "No audio uploaded"}), 400
+
+    audio_file = request.files['audio']
 
     if not user_input:
         return jsonify({"error": "Missing 'message'"}), 400

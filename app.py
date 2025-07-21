@@ -49,3 +49,9 @@ def chat():
     except Exception as e:
         print("❌ 出错：", str(e))
         return jsonify({"error": str(e)}), 500
+
+# 前面是你已有的完整路由逻辑...
+# 最后一行添加：
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)

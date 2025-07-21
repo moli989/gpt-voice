@@ -1,17 +1,21 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import openai, asyncio, tempfile, base64
+import openai, asyncio, tempfile, base64, os
 import edge_tts
-import os
-import traceback
+import nest_asyncio
 
-# ✅ 配置 OpenAI API Key（Render 中设置环境变量）
-client = openai.OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+# 修复异步事件循环冲突
+nest_asyncio.apply()
+
+openai.api_key = os.environ.get("OPENAI_API_KEY")
 
 app = Flask(__name__)
 CORS(app)
 
-# ✅ edge-tts 合成语音为 base64 MP3
+@app.route('/')
+def health_check():
+    return "Voice Assistant API is running", 200
+
 async def text_to_speech(text):
     communicate = edge_tts.Communicate(text, "zh-CN-XiaoxiaoNeural")
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as f:
@@ -19,46 +23,61 @@ async def text_to_speech(text):
         with open(f.name, "rb") as audio_file:
             return base64.b64encode(audio_file.read()).decode("utf-8")
 
-# ✅ 主接口：接收音频 → Whisper识别 → GPT回答 → TTS语音返回
 @app.route("/chat", methods=["POST"])
 def chat():
-    try:
+    try:  # 顶层错误处理开始
+        print("📥 收到语音上传请求")
+
         if 'audio' not in request.files:
-            return jsonify({"error": "缺少语音文件"}), 400
+            return jsonify({"error": "No audio uploaded"}), 400
 
-        # 保存上传音频
         audio_file = request.files['audio']
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_audio:
+        
+        # 使用临时文件处理
+        with tempfile.NamedTemporaryFile(suffix=".wav") as tmp_audio:
             audio_file.save(tmp_audio.name)
+            
+            # 语音识别
+            transcript = openai.Audio.transcribe("whisper-1", open(tmp_audio.name, "rb"))
+            question = transcript["text"]
+            print("🧠 Whisper 识别内容：", question)
 
-        # ✅ 使用 Whisper V2 语音识别
-        transcript = client.audio.transcriptions.create(
-            model="whisper-1",
-            file=open(tmp_audio.name, "rb")
-        )
-        question = transcript.text
-        print("🧠 识别语音内容：", question)
+            # GPT对话
+            chat_response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": "你是一个语音助手"},
+                    {"role": "user", "content": question}
+                ]
+            )
+            answer = chat_response["choices"][0]["message"]["content"]
+            print("🤖 GPT 回复：", answer)
 
-        # ✅ GPT 生成回答
-        chat_response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "你是一个语音助手"},
-                {"role": "user", "content": question}
-            ]
-        )
-        answer = chat_response.choices[0].message.content
-        print("🤖 GPT 回复：", answer)
-
-        # ✅ TTS 合成语音
-        audio_base64 = asyncio.run(text_to_speech(answer))
-        return jsonify({"text": answer, "audio_base64": audio_base64})
-
+            # 文本转语音
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                audio_base64 = loop.run_until_complete(text_to_speech(answer))
+            finally:
+                loop.close()
+                
+            return jsonify({"text": answer, "audio_base64": audio_base64})
+    
+    # 特定OpenAI错误处理
+    except openai.error.AuthenticationError:
+        return jsonify({"error": "Invalid OpenAI API key"}), 401
+    except openai.error.RateLimitError:
+        return jsonify({"error": "OpenAI API rate limit exceeded"}), 429
+    
+    # 通用错误处理
     except Exception as e:
-        print("❌ 出错：", str(e))
+        # 打印完整堆栈跟踪到控制台
+        import traceback
         traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+        
+        # 返回错误信息给客户端
+        return jsonify({"error": f"Internal server error: {str(e)}"}), 500
 
-# ✅ 启动 Flask（Render 专用）
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)

@@ -4,6 +4,8 @@ from openai import OpenAI
 import tempfile
 import base64
 import os
+import asyncio
+from edge_tts import Communicate
 
 client = OpenAI()
 app = Flask(__name__)
@@ -35,13 +37,15 @@ def chat():
         answer = chat_response.choices[0].message.content
         print("🤖 GPT 回复：", answer)
 
-        # 文字转语音（使用 edge-tts）
-        from edge_tts import Communicate
-        communicate = Communicate(text=answer, voice="zh-CN-XiaoxiaoNeural")
-        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_audio_out:
-            await communicate.save(tmp_audio_out.name)
-            with open(tmp_audio_out.name, "rb") as f:
-                audio_base64 = base64.b64encode(f.read()).decode("utf-8")
+        # 文字转语音
+        async def tts():
+            communicate = Communicate(text=answer, voice="zh-CN-XiaoxiaoNeural")
+            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp_audio_out:
+                await communicate.save(tmp_audio_out.name)
+                with open(tmp_audio_out.name, "rb") as f:
+                    return base64.b64encode(f.read()).decode("utf-8")
+
+        audio_base64 = asyncio.run(tts())
 
         return jsonify({"text": answer, "audio_base64": audio_base64})
 

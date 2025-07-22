@@ -2,8 +2,6 @@ flask
 flask-cors
 openai
 edge-tts
-python-dotenv
-nest-asyncio
-beautifulsoup4
 requests
-pydub
+beautifulsoup4
+nest_asyncio

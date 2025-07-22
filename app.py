@@ -58,7 +58,7 @@ def chat():
 
             transcript = client.audio.transcriptions.create(
                 model="whisper-1",
-                file=open(tmp_audio.name, "rb")，
+                file=open(tmp_audio.name, "rb"),
                 language="en"
             )
             question = transcript.text

@@ -72,7 +72,7 @@ def chat():
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": "你是一个结合网络搜索信息的语音助手"},
+                {"role": "system", "content": "You are a helpful and empathetic voice assistant. Answer user questions clearly and conversationally."},
                 {"role": "user", "content": f"问题：{question}\n\n搜索结果：\n{web_info}"}
             ]
         )
